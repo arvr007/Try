@@ -8,6 +8,9 @@ from scipy import ndimage
 import seaborn as sns
 import colorsys
 
+from imantics import Polygons, Mask
+from shapely.geometry import Polygon
+
 from random import randint
 
 from skimage.metrics import structural_similarity as compare_ssim
@@ -268,6 +271,7 @@ def get_contourt_from_n_draw_on_imag(img_cntr, img, new = True):
     im = np.zeros((img_w, img_w), dtype='uint8')
 
     contours, hierarchy = cv2.findContours(img_cntr, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    calc_accuracy_contour(contours)
 
     cv2.drawContours(im, contours, -1, (255, 0, 0), thickness=3)
     cv2.imshow('Contour', im)
@@ -279,7 +283,53 @@ def get_contourt_from_n_draw_on_imag(img_cntr, img, new = True):
     if clr_idx > len(colors) - 1:
         clr_idx =0;
 
+def calc_accuracy_contour(cntrs):
+    print(f"==> calc_accuracy_contour")
+    img_tmp = np.zeros((img_h, img_w, 3), dtype=np.uint8)
+    for c in cntrs:
+        accuracy = 0.02 * cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, accuracy, True)
+        print(f" # edges = {len(approx)}")
+        cv2.drawContours(img_tmp, [approx], 0, colors[clr_idx], 2)
+        cv2.imshow('Accuracu poly', img_tmp)
 
+#
+#  Calculate polygon
+#
+def to_poly(im):
+    polygons = Mask(im).polygons()
+    print(f" points {len(polygons.points)}\n {polygons.points}")
+    print(f" poly- segment \n {polygons.segmentation}")
+
+def _DFS(polygons, contours, hierarchy, sibling_id, is_outer, siblings):
+  while sibling_id != -1:
+    contour = contours[sibling_id].squeeze(axis=1)
+    if len(contour) >= 3:
+      first_child_id = hierarchy[sibling_id][2]
+      children = [] if is_outer else None
+      _DFS(polygons, contours, hierarchy, first_child_id, not is_outer, children)
+
+      if is_outer:
+        polygon = Polygon(contour, holes=children)
+        polygons.append(polygon)
+      else:
+        siblings.append(contour)
+
+    sibling_id = hierarchy[sibling_id][0]
+
+def to_poly2(im):
+    print(f"==> to_poly_2")
+    contours, hierarchy = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_TC89_L1)
+    contour_to_poly(contours, hierarchy)
+
+def contour_to_poly(contours, hierarchy):
+    print(f"==> contour_to_poly")
+    hierarchy = hierarchy[0]
+    polygons = []
+    _DFS(polygons, contours, hierarchy, 0, True, [])
+
+    print(f"contour_to_poly - #points = {len(polygons)}")
+    print(f" contour_to_poly \n {polygons[0]}")
 #
 # ***** G U I *****
 #
@@ -396,7 +446,6 @@ def gui():
             cv2.imshow('dilation', imgd)
             cv2.imshow('Abs Diff ', img_absdiff)
             cv2.imshow("Poly-image", img)
-
 
 def run():
 #   read_poly('poly_01.jpg')
